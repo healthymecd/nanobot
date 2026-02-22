@@ -37,6 +37,7 @@ class SubagentManager:
         brave_api_key: str | None = None,
         exec_config: "ExecToolConfig | None" = None,
         restrict_to_workspace: bool = False,
+        subagent_configs: "dict[str, SubagentConfig] | None" = None,
     ):
         from nanobot.config.schema import ExecToolConfig
         self.provider = provider
@@ -48,6 +49,7 @@ class SubagentManager:
         self.brave_api_key = brave_api_key
         self.exec_config = exec_config or ExecToolConfig()
         self.restrict_to_workspace = restrict_to_workspace
+        self.subagent_configs: dict[str, Any] = subagent_configs or {}
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
     
     async def spawn(
@@ -56,6 +58,8 @@ class SubagentManager:
         label: str | None = None,
         origin_channel: str = "cli",
         origin_chat_id: str = "direct",
+        model: str | None = None,
+        name: str | None = None,
     ) -> str:
         """
         Spawn a subagent to execute a task in the background.
@@ -65,6 +69,8 @@ class SubagentManager:
             label: Optional human-readable label for the task.
             origin_channel: The channel to announce results to.
             origin_chat_id: The chat ID to announce results to.
+            model: Optional AI model override for this subagent.
+            name: Optional named subagent profile from config to use.
         
         Returns:
             Status message indicating the subagent was started.
@@ -76,10 +82,26 @@ class SubagentManager:
             "channel": origin_channel,
             "chat_id": origin_chat_id,
         }
+
+        # Resolve effective settings: named config < explicit model override
+        cfg = self.subagent_configs.get(name) if name else None
+        effective_model = (
+            model if model is not None
+            else (cfg.model if cfg and cfg.model is not None else self.model)
+        )
+        effective_temperature = cfg.temperature if cfg and cfg.temperature is not None else self.temperature
+        effective_max_tokens = cfg.max_tokens if cfg and cfg.max_tokens is not None else self.max_tokens
+        effective_max_iterations = cfg.max_iterations if cfg and cfg.max_iterations is not None else 15
         
         # Create background task
         bg_task = asyncio.create_task(
-            self._run_subagent(task_id, task, display_label, origin)
+            self._run_subagent(
+                task_id, task, display_label, origin,
+                model=effective_model,
+                temperature=effective_temperature,
+                max_tokens=effective_max_tokens,
+                max_iterations=effective_max_iterations,
+            )
         )
         self._running_tasks[task_id] = bg_task
         
@@ -95,9 +117,16 @@ class SubagentManager:
         task: str,
         label: str,
         origin: dict[str, str],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        max_iterations: int = 15,
     ) -> None:
         """Execute the subagent task and announce the result."""
-        logger.info("Subagent [{}] starting task: {}", task_id, label)
+        effective_model = model if model is not None else self.model
+        effective_temperature = temperature if temperature is not None else self.temperature
+        effective_max_tokens = max_tokens if max_tokens is not None else self.max_tokens
+        logger.info("Subagent [{}] starting task: {} (model: {})", task_id, label, effective_model)
         
         try:
             # Build subagent tools (no message tool, no spawn tool)
@@ -123,7 +152,6 @@ class SubagentManager:
             ]
             
             # Run agent loop (limited iterations)
-            max_iterations = 15
             iteration = 0
             final_result: str | None = None
             
@@ -133,9 +161,9 @@ class SubagentManager:
                 response = await self.provider.chat(
                     messages=messages,
                     tools=tools.get_definitions(),
-                    model=self.model,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
+                    model=effective_model,
+                    temperature=effective_temperature,
+                    max_tokens=effective_max_tokens,
                 )
                 
                 if response.has_tool_calls:

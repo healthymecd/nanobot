@@ -128,3 +128,50 @@ def test_litellm_provider_canonicalizes_github_copilot_hyphen_prefix():
 def test_openai_codex_strip_prefix_supports_hyphen_and_underscore():
     assert _strip_model_prefix("openai-codex/gpt-5.1-codex") == "gpt-5.1-codex"
     assert _strip_model_prefix("openai_codex/gpt-5.1-codex") == "gpt-5.1-codex"
+
+
+# --- Named subagent config tests ---
+
+def test_agents_config_subagents_defaults_empty():
+    """AgentsConfig.subagents is empty dict by default."""
+    config = Config()
+    assert config.agents.subagents == {}
+
+
+def test_agents_config_subagents_parsed_from_dict():
+    """Named subagent profiles are parsed correctly from a dict."""
+    from nanobot.config.schema import AgentsConfig, SubagentConfig
+    cfg = AgentsConfig.model_validate({
+        "subagents": {
+            "researcher": {"model": "openai/gpt-4o-mini", "temperature": 0.2, "maxTokens": 2048},
+            "coder": {"model": "anthropic/claude-haiku-3-5", "maxIterations": 10},
+        }
+    })
+    assert "researcher" in cfg.subagents
+    assert cfg.subagents["researcher"].model == "openai/gpt-4o-mini"
+    assert cfg.subagents["researcher"].temperature == 0.2
+    assert cfg.subagents["researcher"].max_tokens == 2048
+    assert cfg.subagents["researcher"].max_iterations is None
+
+    assert "coder" in cfg.subagents
+    assert cfg.subagents["coder"].model == "anthropic/claude-haiku-3-5"
+    assert cfg.subagents["coder"].max_iterations == 10
+    assert cfg.subagents["coder"].temperature is None
+
+
+def test_subagent_config_all_fields_default_to_none():
+    """SubagentConfig has all-None defaults (falls back to AgentDefaults)."""
+    from nanobot.config.schema import SubagentConfig
+    cfg = SubagentConfig()
+    assert cfg.model is None
+    assert cfg.temperature is None
+    assert cfg.max_tokens is None
+    assert cfg.max_iterations is None
+
+
+def test_subagent_config_camel_case_alias():
+    """SubagentConfig accepts camelCase keys (maxTokens, maxIterations)."""
+    from nanobot.config.schema import SubagentConfig
+    cfg = SubagentConfig.model_validate({"maxTokens": 4096, "maxIterations": 8})
+    assert cfg.max_tokens == 4096
+    assert cfg.max_iterations == 8

@@ -51,15 +51,25 @@ class SpawnTool(Tool):
                     "type": "string",
                     "description": "Optional short label for the task (for display)",
                 },
+                "name": {
+                    "type": "string",
+                    "description": "Optional named subagent profile from config (e.g. 'researcher'). Uses its model, temperature, and other settings.",
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Optional AI model override for this subagent (e.g. 'anthropic/claude-haiku-3-5'). Takes precedence over the named profile's model.",
+                },
             },
             "required": ["task"],
         }
     
-    async def execute(self, task: str, label: str | None = None, **kwargs: Any) -> str:
+    async def execute(self, task: str, label: str | None = None, name: str | None = None, model: str | None = None, **kwargs: Any) -> str:
         """Spawn a subagent to execute the given task."""
         return await self._manager.spawn(
             task=task,
             label=label,
             origin_channel=self._origin_channel,
             origin_chat_id=self._origin_chat_id,
+            model=model,
+            name=name,
         )
