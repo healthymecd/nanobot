@@ -56,6 +56,7 @@ class SubagentManager:
         label: str | None = None,
         origin_channel: str = "cli",
         origin_chat_id: str = "direct",
+        model: str | None = None,
     ) -> str:
         """
         Spawn a subagent to execute a task in the background.
@@ -65,6 +66,7 @@ class SubagentManager:
             label: Optional human-readable label for the task.
             origin_channel: The channel to announce results to.
             origin_chat_id: The chat ID to announce results to.
+            model: Optional AI model to use for this subagent; defaults to the manager's model.
         
         Returns:
             Status message indicating the subagent was started.
@@ -79,7 +81,7 @@ class SubagentManager:
         
         # Create background task
         bg_task = asyncio.create_task(
-            self._run_subagent(task_id, task, display_label, origin)
+            self._run_subagent(task_id, task, display_label, origin, model=model if model is not None else self.model)
         )
         self._running_tasks[task_id] = bg_task
         
@@ -95,9 +97,11 @@ class SubagentManager:
         task: str,
         label: str,
         origin: dict[str, str],
+        model: str | None = None,
     ) -> None:
         """Execute the subagent task and announce the result."""
-        logger.info("Subagent [{}] starting task: {}", task_id, label)
+        effective_model = model if model is not None else self.model
+        logger.info("Subagent [{}] starting task: {} (model: {})", task_id, label, effective_model)
         
         try:
             # Build subagent tools (no message tool, no spawn tool)
@@ -133,7 +137,7 @@ class SubagentManager:
                 response = await self.provider.chat(
                     messages=messages,
                     tools=tools.get_definitions(),
-                    model=self.model,
+                    model=effective_model,
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
                 )
