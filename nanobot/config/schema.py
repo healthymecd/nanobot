@@ -191,10 +191,20 @@ class AgentDefaults(Base):
     memory_window: int = 50
 
 
+class SubagentConfig(Base):
+    """Configuration for a named subagent profile."""
+
+    model: str | None = None  # AI model; falls back to agents.defaults.subagentModel or agents.defaults.model
+    temperature: float | None = None  # Sampling temperature; falls back to agents.defaults.temperature
+    max_tokens: int | None = None  # Max output tokens; falls back to agents.defaults.maxTokens
+    max_iterations: int | None = None  # Max tool-call iterations; falls back to 15
+
+
 class AgentsConfig(Base):
     """Agent configuration."""
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
+    subagents: dict[str, SubagentConfig] = Field(default_factory=dict)  # Named subagent profiles
 
 
 class ProviderConfig(Base):
